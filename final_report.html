@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GPU Phase Unwrapping — Final Report</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Syne:wght@400;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0a0c0f;
+      --surface: #111418;
+      --border: #1e2530;
+      --accent: #00e5ff;
+      --accent2: #ff6b35;
+      --text: #d4dce8;
+      --muted: #5a6a7e;
+      --heading: #eef2f7;
+      --mono: 'IBM Plex Mono', monospace;
+      --sans: 'Syne', sans-serif;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 14px;
+      line-height: 1.75;
+      overflow-x: hidden;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(0,229,255,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,229,255,0.03) 1px, transparent 1px);
+      background-size: 48px 48px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    header {
+      position: relative;
+      z-index: 1;
+      padding: 80px 0 60px;
+      text-align: center;
+      border-bottom: 1px solid var(--border);
+      overflow: hidden;
+    }
+
+    header::after {
+      content: '';
+      position: absolute;
+      bottom: -1px; left: 50%; transform: translateX(-50%);
+      width: 200px; height: 2px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    }
+
+    .course-tag {
+      display: inline-block;
+      font-size: 11px;
+      letter-spacing: 0.15em;
+      color: var(--accent);
+      border: 1px solid var(--accent);
+      padding: 4px 12px;
+      margin-bottom: 28px;
+      text-transform: uppercase;
+      opacity: 0;
+      animation: fadeUp 0.5s 0.1s forwards;
+    }
+
+    h1 {
+      font-family: var(--sans);
+      font-size: clamp(26px, 5vw, 52px);
+      font-weight: 800;
+      color: var(--heading);
+      line-height: 1.1;
+      max-width: 800px;
+      margin: 0 auto 24px;
+      opacity: 0;
+      animation: fadeUp 0.6s 0.2s forwards;
+    }
+
+    h1 em { font-style: normal; color: var(--accent); }
+
+    .authors {
+      font-size: 13px;
+      color: var(--muted);
+      letter-spacing: 0.08em;
+      opacity: 0;
+      animation: fadeUp 0.6s 0.35s forwards;
+    }
+
+    .authors span { color: var(--text); }
+
+    .header-links {
+      margin-top: 32px;
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+      flex-wrap: wrap;
+      opacity: 0;
+      animation: fadeUp 0.6s 0.45s forwards;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 20px;
+      font-family: var(--mono);
+      font-size: 12px;
+      letter-spacing: 0.05em;
+      text-decoration: none;
+      border: 1px solid var(--border);
+      color: var(--text);
+      background: var(--surface);
+      transition: border-color 0.2s, color 0.2s, background 0.2s;
+    }
+
+    .btn:hover { border-color: var(--accent); color: var(--accent); background: rgba(0,229,255,0.05); }
+    .btn.primary { border-color: var(--accent); color: var(--accent); }
+    .btn.primary:hover { background: var(--accent); color: var(--bg); }
+
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(10,12,15,0.92);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: center;
+      overflow-x: auto;
+    }
+
+    nav a {
+      padding: 14px 20px;
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      text-decoration: none;
+      white-space: nowrap;
+      border-bottom: 2px solid transparent;
+      transition: color 0.2s, border-color 0.2s;
+    }
+
+    nav a:hover { color: var(--accent); border-bottom-color: var(--accent); }
+
+    main {
+      position: relative;
+      z-index: 1;
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 0 24px 100px;
+    }
+
+    section { padding: 64px 0 0; }
+
+    .section-label {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 28px;
+    }
+
+    .section-label .num { font-size: 11px; color: var(--accent); letter-spacing: 0.1em; }
+
+    .section-label h2 {
+      font-family: var(--sans);
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--heading);
+    }
+
+    .section-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+    p { margin-bottom: 16px; color: var(--text); }
+    p:last-child { margin-bottom: 0; }
+
+    /* summary box */
+    .summary-box {
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+      background: var(--surface);
+      padding: 24px 28px;
+      line-height: 1.8;
+    }
+
+    /* 3-col stage grid */
+    .stages {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1px;
+      background: var(--border);
+      margin: 32px 0;
+    }
+
+    .stage { background: var(--surface); padding: 24px; }
+    .stage-num { font-size: 32px; font-weight: 800; font-family: var(--sans); color: var(--border); line-height: 1; margin-bottom: 8px; }
+    .stage-title { font-size: 12px; letter-spacing: 0.08em; color: var(--accent); text-transform: uppercase; margin-bottom: 8px; }
+    .stage-desc { font-size: 13px; color: var(--muted); }
+
+    /* key-value challenge rows */
+    .challenge-grid { display: grid; gap: 1px; background: var(--border); margin-top: 24px; }
+    .challenge-row { display: grid; grid-template-columns: 200px 1fr; background: var(--surface); }
+    .challenge-label {
+      padding: 18px 20px;
+      border-right: 1px solid var(--border);
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      color: var(--accent2);
+      text-transform: uppercase;
+      display: flex;
+      align-items: flex-start;
+    }
+    .challenge-content { padding: 18px 22px; font-size: 13px; color: var(--text); }
+
+    /* results numbers */
+    .results-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1px;
+      background: var(--border);
+      margin: 24px 0;
+    }
+
+    .result-box { background: var(--surface); padding: 28px 24px; }
+    .result-num {
+      font-family: var(--sans);
+      font-size: 40px;
+      font-weight: 800;
+      color: var(--accent);
+      line-height: 1;
+      margin-bottom: 8px;
+    }
+    .result-label { font-size: 12px; color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 6px; }
+    .result-desc { font-size: 12px; color: var(--text); }
+
+    /* pdf callout */
+    .pdf-callout {
+      border: 1px solid var(--accent);
+      background: rgba(0,229,255,0.04);
+      padding: 28px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      margin-top: 40px;
+      flex-wrap: wrap;
+    }
+
+    .pdf-callout p { margin: 0; color: var(--muted); font-size: 13px; }
+    .pdf-callout strong { color: var(--heading); display: block; font-size: 15px; margin-bottom: 4px; }
+
+    footer {
+      position: relative; z-index: 1;
+      border-top: 1px solid var(--border);
+      padding: 32px 24px;
+      text-align: center;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    @media (max-width: 640px) {
+      .stages { grid-template-columns: 1fr; }
+      .results-grid { grid-template-columns: 1fr; }
+      .challenge-row { grid-template-columns: 1fr; }
+      .challenge-label { border-right: none; border-bottom: 1px solid var(--border); }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="course-tag">15-418 / 15-618 · Final Report · Spring 2026 · CMU</div>
+  <h1>GPU Parallelization of the<br/><em>Goldstein Branch-Cut</em><br/>Phase Unwrapping Algorithm</h1>
+  <p class="authors"><span>Furi Xiang</span> &nbsp;·&nbsp; <span>Anurag Aryal</span></p>
+  <div class="header-links">
+    <a class="btn primary" href="final_report.pdf" target="_blank">📄 Full Report (PDF)</a>
+  </div>
+</header>
+
+<nav>
+  <a href="#summary">Summary</a>
+  <a href="#background">Background</a>
+  <a href="#approach">Approach</a>
+  <a href="#results">Results</a>
+</nav>
+
+<main>
+
+  <!-- SUMMARY -->
+  <section id="summary">
+    <div class="section-label"><span class="num">01</span><h2>Summary</h2></div>
+    <div class="summary-box">
+      We implemented a GPU-accelerated version of the Goldstein branch-cut phase unwrapping algorithm in CUDA on NVIDIA RTX 2080 GPUs. All three stages of the pipeline — residue identification, branch-cut placement, and phase integration — were parallelized and benchmarked against a serial CPU baseline. Stage 1 achieves up to <strong>15.4×</strong> speedup. Stage 3 required three distinct algorithmic designs before reaching <strong>15.25×</strong> speedup. A fused device-resident pipeline adds a further <strong>~1.6×</strong> gain by eliminating intermediate host-device transfers.
+    </div>
+  </section>
+
+  <!-- BACKGROUND -->
+  <section id="background">
+    <div class="section-label"><span class="num">02</span><h2>Background</h2></div>
+    <p>Phase unwrapping recovers the true phase from measurements wrapped into [−π, π]. It arises in InSAR, digital holography, and optical metrology. Goldstein's branch-cut algorithm handles this in three stages.</p>
+
+    <div class="stages">
+      <div class="stage">
+        <div class="stage-num">01</div>
+        <div class="stage-title">Residue ID</div>
+        <div class="stage-desc">Compute wrapped circulation over each 2×2 plaquette. Mark positive/negative residues. Perfectly data-parallel — one thread per cell.</div>
+      </div>
+      <div class="stage">
+        <div class="stage-num">02</div>
+        <div class="stage-title">Branch-Cut Placement</div>
+        <div class="stage-desc">Connect opposite-polarity residues with branch cuts. Sparse, data-dependent matching — write conflicts and warp divergence are the main challenges.</div>
+      </div>
+      <div class="stage">
+        <div class="stage-num">03</div>
+        <div class="stage-title">Phase Integration</div>
+        <div class="stage-desc">Flood-fill unwrapped phase from seed pixels without crossing branch cuts. O(image diameter) data dependency — the hardest stage to parallelize.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- APPROACH -->
+  <section id="approach">
+    <div class="section-label"><span class="num">03</span><h2>Approach</h2></div>
+    <p>Each stage went through multiple GPU implementations before converging. The core challenge in each case was different.</p>
+
+    <div class="challenge-grid">
+      <div class="challenge-row">
+        <div class="challenge-label">Stage 1</div>
+        <div class="challenge-content">Naive global-memory kernel outperformed a shared-memory tiled version — the hardware L2 cache already captured spatial locality, making explicit tiling counterproductive. Final kernel also computes gradients and packs residue coordinates in one pass.</div>
+      </div>
+      <div class="challenge-row">
+        <div class="challenge-label">Stage 2</div>
+        <div class="challenge-content">Brute-force parallel matching and exclusive-sum spatial binning both had too much overhead. Final design uses a fixed-capacity bin table with atomic appends — no host round-trip, no compaction pass.</div>
+      </div>
+      <div class="challenge-row">
+        <div class="challenge-label">Stage 3 — BFS</div>
+        <div class="challenge-content">Global BFS is correct but requires O(image diameter) rounds of cudaDeviceSynchronize. At 8192×8192 this is 16,383 sync calls — ~1.6s overhead independent of compute.</div>
+      </div>
+      <div class="challenge-row">
+        <div class="challenge-label">Stage 3 — Tiled</div>
+        <div class="challenge-content">Tiled flood-fill in shared memory is correct but 31–112× slower than CPU. Each round launches a kernel with 1024 inner iterations; total work scales as O(image_size × TILE_SIZE).</div>
+      </div>
+      <div class="challenge-row">
+        <div class="challenge-label">Stage 3 — Final</div>
+        <div class="challenge-content">Each tile unwraps locally with its own seed. Neighboring tiles are matched along boundaries to estimate integer 2π offsets. A small tile-graph BFS (over tiles, not pixels) resolves global consistency — eliminating the O(diameter) synchronization bottleneck entirely.</div>
+      </div>
+      <div class="challenge-row">
+        <div class="challenge-label">Fusion</div>
+        <div class="challenge-content">All intermediate data stays device-resident. Only the input phase is copied H2D and the final solution D2H. Removes two full-image host-device transfers between stages.</div>
+      </div>
+    </div>
+
+    <p style="margin-top: 24px;">For full implementation details, correctness analysis, and per-attempt diagnostics — <a href="final_report.pdf" style="color: var(--accent);">see the full report (PDF)</a>.</p>
+  </section>
+
+  <!-- RESULTS -->
+  <section id="results">
+    <div class="section-label"><span class="num">04</span><h2>Results</h2></div>
+    <p>All timings are wall-clock milliseconds on GHC cluster RTX 2080. Correctness verified by pixel-wise TIFF comparison against serial CPU output (raw_diff = 0.0).</p>
+
+    <div class="results-grid">
+      <div class="result-box">
+        <div class="result-label">Stage 1 speedup</div>
+        <div class="result-num">15.4×</div>
+        <div class="result-desc">at 8192×8192 — embarrassingly parallel residue detection</div>
+      </div>
+      <div class="result-box">
+        <div class="result-label">Stage 3 speedup (final)</div>
+        <div class="result-num">15.25×</div>
+        <div class="result-desc">at 8192×8192 — per-tile BFS + tile-height matching</div>
+      </div>
+      <div class="result-box">
+        <div class="result-label">Pipeline fusion gain</div>
+        <div class="result-num">1.6×</div>
+        <div class="result-desc">from removing inter-stage host-device transfers</div>
+      </div>
+    </div>
+
+    <div class="challenge-grid">
+      <div class="challenge-row">
+        <div class="challenge-label">Stage 3 BFS</div>
+        <div class="challenge-content">1.7–22× <span style="color:var(--accent2)">slower</span> than CPU across all sizes. Bottleneck: O(image diameter) sync rounds. Gap narrows at large images as per-round parallelism improves, but never closes.</div>
+      </div>
+      <div class="challenge-row">
+        <div class="challenge-label">Stage 3 Tiled</div>
+        <div class="challenge-content">31–112× <span style="color:var(--accent2)">slower</span> than CPU — worst of the three. O(image_size / TILE_SIZE) kernel relaunches each doing TILE_SIZE² inner iterations dominates all compute.</div>
+      </div>
+      <div class="challenge-row">
+        <div class="challenge-label">Stage 3 Final</div>
+        <div class="challenge-content">1.1–15.25× <span style="color:var(--accent)">faster</span> than CPU. Scales well with image size — local tile work is bounded, cross-tile matching is cheap.</div>
+      </div>
+    </div>
+
+    <div class="pdf-callout">
+      <div>
+        <strong>Full results, all tables, and figures</strong>
+        <p>Detailed per-size breakdown of all 5 configurations, profiling data, and correctness analysis.</p>
+      </div>
+      <a class="btn primary" href="final_report.pdf" target="_blank">📄 Read Full Report</a>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  15-418/618 Parallel Computer Architecture and Programming · Carnegie Mellon University · Spring 2026
+</footer>
+
+</body>
+</html>
